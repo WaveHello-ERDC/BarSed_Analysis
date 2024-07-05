@@ -15,17 +15,21 @@ from datetime import datetime, timedelta
 # Library imports
 from lib.data_classes.WaveGauge import WaveGauge
 from lib.data_classes.WaveMaker import WaveMaker
+from lib.data_classes.ADV import ADV
+from lib.general_funcs.datetime_funcs import matlab_datenum_to_datetime
+from lib.general_funcs.list_functions import check_val_in_list, apply_mask_2_list
 
 class Run:
     # TODO: Update this so that a file directory is based and it does 
     # all the rest
-    def __init__(self, id, wave_file_path):
+    def __init__(self, id, wave_file_path, ADV_file_path):
         self.id   = id             # Holds the id of the run eg. RUN001
         self.wave_file_path = wave_file_path # Path to the mat file that contains the run's
                                              # wave data
+        self.ADV_file_path = ADV_file_path
 
          # Init variables for later storage
-        self.datetime = None
+        self.date_time = None
         self.start_date = None
         self.num_times = None
         self.wave_gauges = []      # Variable to hold the wave gauge information
@@ -40,6 +44,50 @@ class Run:
                 f"Start Date: {self.start_date}\n"
                 f"Wave Data File path: {self.wave_file_path}\n"
                 )
+
+    @staticmethod
+    def _get_velocity_keys(selected_velocity_keys):
+        """
+        Check that the input veocity keys are valid and return the keys if the input is valid
+        """
+        # List of the valid keys
+        valid_ADV_keys = ["u_inter", "v_inter", "w_inter", 
+                          "u", "v", "w", "u_ens", "v_ens", "w_ens",
+                          "u_ens_avg", "v_ens_avg", "w_ens_avg"
+        ]
+        
+        # Check that the input keys are valid
+        if selected_velocity_keys == "all":
+            # Store all of the keys
+            velocity_keys = valid_ADV_keys
+
+        elif selected_velocity_keys is None:
+            # Don't load any velocity data
+            velocity_keys = []
+
+        else:
+            # User selected a subset of the velocity keys
+
+            # Check that the input keys are in the list
+            key_valid_list = check_val_in_list(selected_velocity_keys, valid_ADV_keys)
+
+            if not all(key_valid_list):
+
+                # Invert the list so we can get the values that aren't valid
+                inverted_valid_list = [not val for val in key_valid_list]
+
+                # Get the values that aren't valid
+                invalid_keys = apply_mask_2_list(selected_velocity_keys, inverted_valid_list)
+
+                # If all the keys are valid raise an error
+                raise KeyError(f"The following keys: {invalid_keys}/n"
+                               f"Are not valid keys the valid keys are: {valid_ADV_keys}"
+                               "Or 'all' or None (<- this is the type)"
+                               )
+            # If all of the keys are valid set the return value
+            velocity_keys = selected_velocity_keys
+        
+        return velocity_keys
     
     def load_wave_data(self):
         """
@@ -62,6 +110,7 @@ class Run:
 
         # Get the eta
         eta    = mat_dict["eta"]["eta"][0][0]
+
         # Get the x locations of the wave gauges
         x_loc  = mat_dict["eta"]["x"][0][0].flatten() 
 
@@ -83,39 +132,115 @@ class Run:
         # Construct the wave gauges
         self._construct_wave_gauges(x_loc, y_loc, eta)
 
-    def _convert_mat_time_and_store(self, time_offset, mat_time):
+    def load_adv_data(self, selected_velocity_keys = "all"):
+        """
+        Loads the adv data from the ADV mat file.
+        Since there is alot of velocity data there's the option to only load some of the keys in the mat file
+        """
+
+        # Check that the input keys are valid
+        if  not selected_velocity_keys == "all" and \
+            not selected_velocity_keys is None  and \
+            not isinstance(selected_velocity_keys, list):
+            
+            # Check that the input velocities keys is valid
+            raise TypeError("Value should be all, None (<- type None) or a ist of valid keys")
+
+        # Load the file, need this either way
+        mat_dict = scipy.io.loadmat(self.ADV_file_path)
+
+        # Open the mat dict and get to the velocity data
+        mat_dict = mat_dict["adv"]
+
+        # Store the input wave period
+        self.wave_period = mat_dict["per"][0][0][0][0]
+
+        # Store the input wave height
+        self.height = mat_dict["H"][0][0][0][0]          
+
+        # Get the datetime and convert it to python datetime
+        date_time = matlab_datenum_to_datetime(mat_dict["date_matlab"][0][0].flatten())
+
+        # Get the sensor names
+        sensor_names = mat_dict["sensor_names"][0][0]
+
+        # Get the sensor ids
+        sensor_ids = [i+1 for i in range(len(sensor_names))]
+        
+        # Get the height of each of the advs relative to the flume
+        flume_heights = mat_dict["z"][0][0].flatten()
+
+        # Get the normalized time
+        normalized_time = mat_dict["t_norm"][0][0][0]
+
+        # Get the number of ADVs
+        self.num_ADV = len(sensor_names)
+    
+        self._construct_ADVs(selected_velocity_keys, sensor_names, sensor_ids, date_time, flume_heights, 
+                             normalized_time, mat_dict)
+
+        # Print the number of advs added
+        print( f"Added: {self.num_ADV} ADV(s)" )
+
+    def _construct_ADVs(self, selected_velocity_keys, sensor_names, sensor_ids, date_time, 
+                        flume_heights, normalized_time, mat_dict):
+        
+        # Check that the velocity keys are valid and convert "all" and None 
+        # to the proper list
+        velocity_keys = self._get_velocity_keys(selected_velocity_keys)
+
+        # Init list to hold the ADV objects
+        self.ADVs = []
+        
+        # Loop over all the advs
+        for i in range(self.num_ADV):
+
+            # Get the adv height
+            flume_height = flume_heights[i]
+
+            # Get the sensor name
+            sensor_name = sensor_names[i]
+
+            # Get the sensor id
+            sensor_id = sensor_ids[i]
+
+            # Construct the adv object
+            Adv_object = ADV(sensor_name, sensor_id, date_time, flume_height, normalized_time)
+            
+            # Loop over the velocity keys
+            for key in velocity_keys:
+                # Load the data from the mat_dict
+                velocity_data = mat_dict[key][0][0][i]
+
+                # Store the data in the adv object
+                Adv_object.store_velocity_data(key, velocity_data)
+            
+            # Add the ADV to the list    
+            self.ADVs.append(Adv_object)
+        
+        # Update the number of ADVs
+        self.num_ADV = len(self.ADVs)
+    
+    def _convert_mat_time_and_store(self, mat_time):
         """
         Convert the time from what it is in the mat file to th matching date time
         """
-
-        # Apply the offset to the data, need an offset because python's earliest time is 
-        # 1, 1, 1 instead of matlab 0, 0, 0 
-        mat_time = mat_time + time_offset
-
-        experiment_datetime = []
-
-        # Choose the 
-        start_date = datetime(1, 1, 1)
-
-        for i, time in enumerate(mat_time):
-            # Calc delta time from the 
-            delta_datetime = timedelta(days = time)
-            experiment_datetime.append(start_date + delta_datetime)
+        experiment_datetime = matlab_datenum_to_datetime(mat_time)
 
         # Store the full date time array
-        self.datetime = experiment_datetime
+        self.date_time = experiment_datetime
 
         # Store the start date
-        self.start_date = self.datetime[0].date()
+        self.start_date = self.date_time[0].date()
 
         # Store the number of record times
-        self.num_times = len(self.datetime)
+        self.num_times = len(self.date_time)
 
     def _construct_wave_maker(self, eta_wm, x_wm):
         """
         Construct the wave maker
         """
-        self.wave_maker = WaveMaker(eta_wm, x_wm, self.datetime)
+        self.wave_maker = WaveMaker(eta_wm, x_wm, self.date_time)
     
     def _construct_wave_gauges(self, x_loc, y_loc, eta):
         """
@@ -128,7 +253,7 @@ class Run:
         for id, location in enumerate(zip(x_loc, y_loc)):
     
             # Create the wave gauge
-            wave_gauge = WaveGauge(id + 1, location, eta[id], self.datetime)
+            wave_gauge = WaveGauge(id + 1, location, eta[id], self.date_time)
             
             # Store the wave gauge in the list
             wave_gauge_list.append(wave_gauge)
@@ -255,7 +380,7 @@ class Run:
                 location = self.flume_wse_locs[index, :]
 
                 # Construct the label for the data
-                time_label = f"time: {self.datetime[index].time()}"
+                time_label = f"time: {self.date_time[index].time()}"
                 
                 # Plot the data
                 axs.plot(location, wse, label = time_label, **kwargs)
@@ -266,7 +391,7 @@ class Run:
             location = self.flume_wse_locs[time_index, :]
 
             # Cosntruct the time label
-            time_label = f"time: {self.datetime[time_index].time()}"
+            time_label = f"time: {self.date_time[time_index].time()}"
 
             # Plot the data
             axs.plot(location, wse, label = time_label, **kwargs)
@@ -297,7 +422,7 @@ class Run:
         # Make sure the axs can be looped over even when there's only one plot being created
         axs = np.atleast_1d(axs)
 
-        time= self.datetime
+        time= self.date_time
 
         # Loop over the ids
         for i, id in enumerate(gauge_ids):

@@ -12,14 +12,14 @@ import matplotlib.pyplot as plt
 # Libary imports
 
 class WaveMaker:
-    def __init__(self, eta_wm, position, datetime):
+    def __init__(self, eta_wm, position, date_time):
         self.eta_wm = eta_wm         # Store the free surface elevation at the 
                                      # face of the wave maker
 
         self.position = position     # Cross-position of the face of the piston type wave maker
                                      # relative to its starting position, x = 0
         
-        self.datetime  = datetime 
+        self.date_time  = date_time 
         self.num_times = len(eta_wm) # Number of recorded times
 
     def __str__(self) -> str:
@@ -45,7 +45,7 @@ class WaveMaker:
             fig, axs = plt.subplots(nrows = 1, ncols =1 , figsize = figsize)
 
         # Plot the data
-        axs.plot(self.datetime, self.position, **kwargs)
+        axs.plot(self.date_time, self.position, **kwargs)
 
         axs.set_title("Wave Maker position vs. Time")
         axs.set_xlabel("Time (min)")
@@ -67,7 +67,7 @@ class WaveMaker:
         # Otherwise used the provided axis
 
         # Plot the data
-        axs.plot(self.datetime, self.eta_wm, **kwargs)
+        axs.plot(self.date_time, self.eta_wm, **kwargs)
 
         axs.set_title("Wave Maker WSE vs. Time")
         axs.set_xlabel("Time (min)")

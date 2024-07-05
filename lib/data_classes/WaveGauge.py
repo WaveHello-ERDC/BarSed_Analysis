@@ -28,11 +28,11 @@ class WaveGauge:
         16: "ultrasonic",
         17: "ultrasonic",
     }
-    def __init__(self, gauge_id, location, eta, datetime):
+    def __init__(self, gauge_id, location, eta, date_time):
         self.id = gauge_id       # Store the gauge id
         self.location = location # (x, y) location of the gauge
         self.eta = eta           # Measured surface elevation disturbance
-        self.datetime = datetime # Store the time
+        self.date_time = date_time # Store the time
         self._set_wg_type()      # Set the type of the wave gauge using the id
     
     def __str__(self):
@@ -56,7 +56,7 @@ class WaveGauge:
         fig, axs = plt.subplots(nrows = 1, ncols = 1, figsize = figsize)
 
         # Create the plot title
-        axs.plot(self.datetime, self.eta, label = f"Location (x, y): {self.location}", **kwargs)
+        axs.plot(self.date_time, self.eta, label = f"Location (x, y): {self.location}", **kwargs)
         
         # Format the plot
         axs.set_title(f"WSE. (m) vs. Time (min), Gauge id: {self.id}")
