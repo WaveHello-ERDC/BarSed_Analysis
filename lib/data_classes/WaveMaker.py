@@ -75,3 +75,8 @@ class WaveMaker:
 
         if legend:
             axs.legend()
+
+    def calc_velocity(self):
+        """
+        Calc the velocity of the wave gauge. I think I can use this as as flow"""
+        pass

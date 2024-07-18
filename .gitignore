@@ -104,3 +104,7 @@ dmypy.json
 
 # Local directory for project-specific data
 data/
+
+
+# Media File types
+*.gif
